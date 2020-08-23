@@ -78,7 +78,7 @@ class McBot:
   chat_msg_re = re.compile(r'<([^>]+)> (.*)')
   player_re = re.compile(r'(\S+) (joined|left) the game')
   online_re = re.compile(r'There are (\d+) of a max of \d+ players online: ?(.*)')
-  advancement_re = re.compile(r'(?P<who>.*?) has (?:completed|reached|made) the (?P<type>challenge|goal|advancements) \[(?P<what>.*?)\]')
+  advancement_re = re.compile(r'(?P<who>.*?) has (?:completed|reached|made) the (?P<type>challenge|goal|advancement) \[(?P<what>.*?)\]')
 
   advancement_action_map = {
     'challenge': '完成了挑战',
