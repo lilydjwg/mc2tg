@@ -1,33 +1,42 @@
 #!/usr/bin/python3
 
 import asyncio
+from asyncio import Queue
 import os
 import sys
 import json
-import regex as re
 import logging
+from typing import (
+  Dict, Any, Mapping, TYPE_CHECKING, List, Generator, Union,
+  Optional,
+)
+if TYPE_CHECKING:
+  import re
+else:
+  import regex as re
 
+import toml
 from aiogram import Bot, Dispatcher, types
 
-__version__ = '0.1'
+__version__ = '0.2'
 
-def load_messages(lang):
+def load_messages(lang: str) -> Dict[str, str]:
   file = f'{lang}.json'
   dir = os.path.dirname(__file__)
   datafile = os.path.join(dir, 'data', file)
   with open(datafile) as f:
     return json.load(f)
 
-def msgs2re(msgs, names):
+def msgs2re(msgs: List[str], names: List[str]) -> re.Pattern:
   retext = '|'.join(msg2re(msg, names) for msg in msgs)
   return re.compile(retext)
 
-def msg2re(msg, names):
+def msg2re(msg: str, names: List[str]) -> str:
   return ''.join(_msg2re(msg, names))
 
-def _msg2re(msg, names):
+def _msg2re(msg: str, names: List[str]) -> Generator[str, None, None]:
   placeholder_re = re.compile(r'(%s|%(\d+)\$s)')
-  it = placeholder_re.splititer(msg)
+  it = placeholder_re.splititer(msg) # type: ignore
   idx = 0
   while True:
     try:
@@ -46,11 +55,11 @@ def _msg2re(msg, names):
       return
 
 class _Replacer:
-  def __init__(self, items):
+  def __init__(self, items: List[str]) -> None:
     self.items = items
     self.count = 0
 
-  def __call__(self, match):
+  def __call__(self, match: re.Match) -> str:
     if x := match.group(1):
       idx = int(x) - 1
     else:
@@ -59,16 +68,15 @@ class _Replacer:
 
     return self.items[idx]
 
-def msg_format(msg, items):
+def msg_format(msg: str, items: List[str]) -> str:
   return re.sub(r'%s|%(\d+)\$s', _Replacer(items), msg)
 
 class McBot:
   msg_re = re.compile(r'^\[.*\]\ \[Server\ thread/INFO\]:\ (.*)$')
   chat_msg_re = re.compile(r'<([^>]+)> (.*)')
   player_re = re.compile(r'(\S+) (joined|left) the game')
-  online_re = re.compile(r'There are (\d+) of a max of \d+ players online: (.*)')
+  online_re = re.compile(r'There are (\d+) of a max of \d+ players online: ?(.*)')
   advancement_re = re.compile(r'(?P<who>.*?) has (?:completed|reached|made) the (?P<type>challenge|goal|advancements) \[(?P<what>.*?)\]')
-  death_re = None
 
   advancement_action_map = {
     'challenge': '完成了挑战',
@@ -76,7 +84,7 @@ class McBot:
     'advancement': '取得了进度',
   }
 
-  def __init__(self, mc_q, tg_q):
+  def __init__(self, mc_q: Queue[str], tg_q: Queue[str]) -> None:
     self.mc_q = mc_q
     self.tg_q = tg_q
 
@@ -98,7 +106,7 @@ class McBot:
     self.advancements = advancements
     self.death_msg_map = death_msg_map
 
-  async def run(self):
+  async def run(self) -> None:
     mc2tg_task = asyncio.create_task(self.mc2tg())
     tg2mc_task = asyncio.create_task(self.tg2mc())
     await asyncio.wait(
@@ -106,7 +114,7 @@ class McBot:
       return_when = asyncio.FIRST_COMPLETED,
     )
 
-  async def tg2mc(self):
+  async def tg2mc(self) -> None:
     while True:
       msg = await self.mc_q.get()
       if msg == 'online':
@@ -114,7 +122,7 @@ class McBot:
       else:
         print('\x15tellraw @a', json.dumps({'text': msg}, ensure_ascii=False))
 
-  async def mc2tg(self):
+  async def mc2tg(self) -> None:
     loop = asyncio.get_event_loop()
     reader = asyncio.StreamReader()
     read_protocol = asyncio.StreamReaderProtocol(reader)
@@ -123,8 +131,8 @@ class McBot:
     sys.stdout = os.fdopen(1, mode='w', buffering=1)
 
     while not reader.at_eof():
-      line = await reader.readline()
-      line = line.decode('utf-8', errors='replace').rstrip()
+      lineb = await reader.readline()
+      line = lineb.decode('utf-8', errors='replace').rstrip()
       if m := self.msg_re.match(line):
         logging.info('MC msg: %s', line)
         try:
@@ -132,7 +140,7 @@ class McBot:
         except Exception:
           logging.exception('error processing minecraft message %s', line)
 
-  def process_msg(self, msg):
+  def process_msg(self, msg: str) -> None:
     if m := self.chat_msg_re.fullmatch(msg):
       if m.group(2) == 'ping':
         self.mc_q.put_nowait('pong')
@@ -175,15 +183,17 @@ class McBot:
 class TgBot:
   group_id = None
 
-  def __init__(self, token, group, proxy, tg_q, mc_q):
+  def __init__(
+    self, token: str,
+    group: Union[str, int, None],
+    proxy: Optional[str],
+    tg_q: Queue[str], mc_q: Queue[str],
+  ) -> None:
     self.tg_q = tg_q
     self.mc_q = mc_q
 
     if group is not None:
-      try:
-        self.group_id = int(group)
-      except ValueError:
-        self.group_id = group
+      self.group_id = int(group)
 
     bot = Bot(token=token, proxy=proxy)
     dp = Dispatcher(bot)
@@ -216,7 +226,7 @@ class TgBot:
     self.dp = dp
     self.bot = bot
 
-  def _check_group(self, message):
+  def _check_group(self, message: types.Message) -> bool:
     if message.chat.id == self.group_id:
       return True
 
@@ -225,7 +235,7 @@ class TgBot:
 
     return False
 
-  async def on_message(self, message):
+  async def on_message(self, message: types.Message) -> None:
     logging.info('TG msg: %s', message)
     if not self._check_group(message):
       return
@@ -251,19 +261,19 @@ class TgBot:
 
     self.mc_q.put_nowait(reply)
 
-  async def on_ping(self, message):
+  async def on_ping(self, message: types.Message) -> None:
     await message.reply('pong')
 
-  async def on_about(self, message):
+  async def on_about(self, message: types.Message) -> None:
     await message.reply(f'mc2tg {__version__}')
 
-  async def on_online(self, message):
+  async def on_online(self, message: types.Message) -> None:
     if not self._check_group(message):
       return
 
     self.mc_q.put_nowait('online')
 
-  async def run(self):
+  async def run(self) -> None:
     mc2tg_task = asyncio.create_task(self.mc2tg())
     tg2mc_task = asyncio.create_task(self.tg2mc())
     await asyncio.wait(
@@ -271,11 +281,11 @@ class TgBot:
       return_when = asyncio.FIRST_COMPLETED,
     )
 
-  async def tg2mc(self):
+  async def tg2mc(self) -> None:
     await self.dp.skip_updates()
     await self.dp.start_polling()
 
-  async def mc2tg(self):
+  async def mc2tg(self) -> None:
     while True:
       msg = await self.tg_q.get()
       if not self.group_id:
@@ -283,10 +293,15 @@ class TgBot:
       await self.bot.send_message(
         self.group_id, msg)
 
-async def main(token, group, proxy):
-  tg_q = asyncio.Queue()
-  mc_q = asyncio.Queue()
-  tgbot = TgBot(token, group, proxy, tg_q, mc_q)
+async def main(config: Mapping[str, Any]) -> None:
+  tg_q: Queue[str] = Queue()
+  mc_q: Queue[str] = Queue()
+  tgbot = TgBot(
+    config['token'],
+    config['group'],
+    config.get('proxy'),
+    tg_q, mc_q,
+  )
   mcbot = McBot(mc_q, tg_q)
   tgtask = asyncio.create_task(tgbot.run())
   mctask = asyncio.create_task(mcbot.run())
@@ -301,10 +316,8 @@ if __name__ == '__main__':
 
   parser = argparse.ArgumentParser(
     description='A bot bridging minecraft and telegram group')
-  parser.add_argument('--proxy',
-                      help='The proxy to use')
-  parser.add_argument('--group', required=True,
-                      help='The group to sync with')
+  parser.add_argument('-c', '--config', required=True,
+                      help='configuration file')
   parser.add_argument('--logfile',
                       help='log file (may be a named pipe)')
   parser.add_argument('--loglevel', default='info',
@@ -318,13 +331,12 @@ if __name__ == '__main__':
     os.close(fd)
     sys.stderr = os.fdopen(2, mode='w', buffering=1)
 
-  token = os.environ.pop('TOKEN', None)
-  if not token:
-    sys.exit('Please pass bot token in environment variable TOKEN.')
-
   enable_pretty_logging(args.loglevel.upper())
 
+  with open(args.config) as f:
+    config = toml.load(f)
+
   try:
-    asyncio.run(main(token, args.group, args.proxy))
+    asyncio.run(main(config))
   except KeyboardInterrupt:
     pass

@@ -1,0 +1,4 @@
+group = -1234567890 # can also be "@groupname"
+token = "bot token here"
+# proxy used for Telegram
+# proxy = "socks5://127.0.0.1:1080"
