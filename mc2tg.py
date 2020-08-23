@@ -267,7 +267,10 @@ class TgBot:
     await message.reply('pong')
 
   async def on_about(self, message: types.Message) -> None:
-    await message.reply(f'mc2tg {__version__}')
+    await message.reply(f'''\
+mc2tg {__version__}
+source code: https://github.com/lilydjwg/mc2tg
+''')
 
   async def on_online(self, message: types.Message) -> None:
     if not self._check_group(message):
