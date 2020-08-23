@@ -12,11 +12,11 @@ from typing import (
   Dict, Any, Mapping, TYPE_CHECKING, List, Generator, Union,
   Optional,
 )
+
 if TYPE_CHECKING:
   import re
 else:
   import regex as re
-
 import toml
 from aiogram import Bot, Dispatcher, types
 
