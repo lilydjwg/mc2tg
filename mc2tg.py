@@ -323,6 +323,8 @@ if __name__ == '__main__':
     description='A bot bridging minecraft and telegram group')
   parser.add_argument('-c', '--config', required=True,
                       help='configuration file')
+  parser.add_argument('--pidfile',
+                      help='pidfile to write pid to')
   parser.add_argument('--loglevel', default='info',
                       choices=['debug', 'info', 'warn', 'error'],
                       help='log level')
@@ -332,6 +334,10 @@ if __name__ == '__main__':
 
   with open(args.config) as f:
     config = toml.load(f)
+
+  if args.pidfile:
+    with open(args.pidfile, 'w') as f:
+      print(os.getpid(), file=f)
 
   try:
     asyncio.run(main(config))
