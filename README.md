@@ -4,7 +4,7 @@
 
 Your minecraft server is running inside tmux.
 
-You need Python 3.7+ and all Python libraries in `requirements.txt` installed.
+You need Python 3.8+ and all Python libraries in `requirements.txt` installed.
 
 Currently the messages are in Simplified Chinese. Contributions for other
 languages are welcome.
