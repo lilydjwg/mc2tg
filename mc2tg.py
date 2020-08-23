@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+from __future__ import annotations
+
 import asyncio
 from asyncio import Queue
 import os
@@ -318,18 +320,10 @@ if __name__ == '__main__':
     description='A bot bridging minecraft and telegram group')
   parser.add_argument('-c', '--config', required=True,
                       help='configuration file')
-  parser.add_argument('--logfile',
-                      help='log file (may be a named pipe)')
   parser.add_argument('--loglevel', default='info',
                       choices=['debug', 'info', 'warn', 'error'],
                       help='log level')
   args = parser.parse_args()
-
-  if args.logfile:
-    fd = os.open(args.logfile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
-    os.dup2(fd, 2)
-    os.close(fd)
-    sys.stderr = os.fdopen(2, mode='w', buffering=1)
 
   enable_pretty_logging(args.loglevel.upper())
 
