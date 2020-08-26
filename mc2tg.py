@@ -19,6 +19,7 @@ else:
   import regex as re
 import toml
 from aiogram import Bot, Dispatcher, types
+import aiogram
 
 __version__ = '0.2'
 
@@ -299,8 +300,14 @@ source code: https://github.com/lilydjwg/mc2tg
       msg = await self.tg_q.get()
       if not self.group_id:
         continue
-      await self.bot.send_message(
-        self.group_id, msg)
+
+      while True:
+        try:
+          await self.bot.send_message(
+            self.group_id, msg)
+          break
+        except aiogram.utils.exceptions.NetworkError:
+          pass
 
 async def main(config: Mapping[str, Any]) -> None:
   tg_q: Queue[str] = Queue()
