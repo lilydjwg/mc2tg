@@ -143,15 +143,19 @@ class McBot:
       if m := self.msg_re.match(line):
         logging.info('MC msg: %s', line)
         try:
-          self.process_msg(m.group(1))
+          reply = self.process_msg(m.group(1))
+          if reply is not None:
+            self.tg_q.put_nowait(reply)
         except Exception:
           logging.exception('error processing minecraft message %s', line)
 
-  def process_msg(self, msg: str) -> None:
+  def process_msg(self, msg: str) -> Optional[str]:
+    if msg == 'No player was found' or 'died, message:' in msg:
+      return None
+
     if m := self.chat_msg_re.fullmatch(msg):
       if m.group(2) == 'ping':
-        self.mc_q.put_nowait('pong')
-        return
+        return 'pong'
       reply = msg
     elif m := self.online_re.fullmatch(msg):
       n = int(m.group(1))
@@ -183,9 +187,9 @@ class McBot:
       zhmsg = self.death_msg_map[msg]
       reply = msg_format(zhmsg, items)
     else:
-      return
+      return None
 
-    self.tg_q.put_nowait(reply)
+    return reply
 
 class TgBot:
   group_id = None
