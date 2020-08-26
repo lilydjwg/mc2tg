@@ -96,6 +96,7 @@ class McBot:
     advancements = {}
     death_msgs = []
     death_msg_map = {}
+    entity_name_map = {}
     for k, v in en_msgs.items():
       if k.startswith('advancements.'):
         advancements[v] = zh_msgs[k]
@@ -103,10 +104,13 @@ class McBot:
         death_msgs.append(v)
         death_msg_map[
           re.sub(r'%\d+\$s', '%s', v)] = zh_msgs[k]
+      elif k.startswith('entity.'):
+        entity_name_map[v] = zh_msgs[k]
 
     self.death_re = msgs2re(death_msgs, ['player', 'killer', 'tool'])
     self.advancements = advancements
     self.death_msg_map = death_msg_map
+    self.entity_name_map = entity_name_map
 
   async def run(self) -> None:
     mc2tg_task = asyncio.create_task(self.mc2tg())
@@ -167,10 +171,10 @@ class McBot:
       reply = f'{who} {action}：{what}'
     elif m := self.death_re.fullmatch(msg):
       items = [m.group('player')]
-      if x:= m.group('killer'):
-        items.append(x)
-        if x:= m.group('tool'):
-          items.append(x)
+      if x := m.group('killer'):
+        items.append(self.entity_name_map.get(x, x))
+        if x := m.group('tool'):
+          items.append(self.entity_name_map.get(x, x))
 
       for g in range(len(items), 0, -1):
         s, e = m.span(g)
