@@ -5,6 +5,8 @@
 Your minecraft server is running inside tmux.
 
 You need Python 3.8+ and all Python libraries in `requirements.txt` installed.
+If you want to use a socks proxy, you also need to install the `aiohttp-socks`
+package.
 
 Currently the messages are in Simplified Chinese. Contributions for other
 languages are welcome.
