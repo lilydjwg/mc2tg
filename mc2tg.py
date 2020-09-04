@@ -155,7 +155,8 @@ class McBot:
 
     if m := self.chat_msg_re.fullmatch(msg):
       if m.group(2) == 'ping':
-        return 'pong'
+        self.mc_q.put('pong')
+        return None
       reply = msg
     elif m := self.online_re.fullmatch(msg):
       n = int(m.group(1))
