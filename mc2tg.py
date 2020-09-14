@@ -9,8 +9,8 @@ import sys
 import json
 import logging
 from typing import (
-  Dict, Any, Mapping, TYPE_CHECKING, List, Generator, Union,
-  Optional,
+  Dict, Any, Mapping, TYPE_CHECKING, List, Generator,
+  Union, Optional, Tuple,
 )
 
 if TYPE_CHECKING:
@@ -74,6 +74,151 @@ class _Replacer:
 def msg_format(msg: str, items: List[str]) -> str:
   return re.sub(r'%s|%(\d+)\$s', _Replacer(items), msg)
 
+SingleMcMessageType = Dict[str, Any]
+
+class McMessage:
+  def __init__(self) -> None:
+    self.parts: List[SingleMcMessageType] = []
+
+  def append(
+    self,
+    text: str, *,
+    color: Optional[str] = None,
+    hover_text: Optional[McMessage] = None,
+    link: Optional[str] = None,
+    underlined: bool = False,
+    bold: bool = False,
+    strikethrough: bool = False,
+    italic: bool = False,
+  ) -> None:
+    o: SingleMcMessageType = {'text': text}
+    if color:
+      o['color'] = color
+    if underlined:
+      o['underlined'] = True
+    if bold:
+      o['bold'] = True
+    if italic:
+      o['italic'] = True
+    if strikethrough:
+      o['strikethrough'] = True
+    if hover_text:
+      o['hoverEvent'] = {
+        'action': 'show_text',
+        'contents': hover_text.parts,
+      }
+    if link:
+      o['clickEvent'] = {
+        'action': 'open_url',
+        'value': link,
+      }
+
+    self.parts.append(o)
+
+  def extend(self, other: McMessage) -> None:
+    self.parts.extend(other.parts)
+
+  def __str__(self) -> str:
+    o: Any
+    if len(self.parts) == 1:
+      o = self.parts[0]
+    else:
+      o = self.parts
+    return json.dumps(o, ensure_ascii=False)
+
+class McDecorator:
+  def __init__(self):
+    self.mcmsg = McMessage()
+
+  def _segment(
+    self, fulltext: str,
+    entities: Optional[List[types.MessageEntity]] = None,
+  ) -> Generator[Tuple[str, str, Any], None, None]:
+    fulltext_u16 = fulltext.encode('utf-16le')
+    last_end = 0
+    # entity doesn't overlap
+    for entity in sorted(
+        entities or [],
+        key=lambda item: item.offset,
+    ):
+      attr_type = 'color'
+      attr_value: Any = 'white'
+
+      if entity.offset > last_end:
+        yield fulltext_u16[last_end*2 : entity.offset*2].decode('utf-16le'), attr_type, attr_value
+
+      last_end = entity.offset + entity.length
+      text = fulltext_u16[entity.offset*2 : last_end*2].decode('utf-16le')
+
+      if entity.type in ['bold', 'italic', 'strikethrough']:
+        attr_type = entity.type
+        attr_value = True
+      elif entity.type == 'underline':
+        attr_type = 'underlined'
+        attr_value = True
+      elif entity.type in ['code', 'pre']:
+        attr_type = 'color'
+        attr_value = 'yellow'
+      elif entity.type in ['url', 'text_link']:
+        attr_type = 'link'
+        attr_value = entity.url or text
+
+      yield text, attr_type, attr_value
+
+    if last_end < len(fulltext_u16) // 2:
+      yield fulltext_u16[last_end*2:].decode('utf-16le'), 'color', 'white'
+
+  def _apply_attrs(
+    self, text: str, attr_type: str, attr_value: Any,
+  ) -> None:
+    kwargs = {'color': 'white'}
+    kwargs[attr_type] = attr_value
+    if attr_type == 'link':
+      kwargs['underlined'] = True
+      kwargs['color'] = 'blue'
+
+    self.mcmsg.append(text, **kwargs)
+
+  def run(
+    self, text: str,
+    entities: Optional[List[types.MessageEntity]] = None,
+  ) -> McMessage:
+    for text, attr_type, attr_value in self._segment(text, entities):
+      self._apply_attrs(text, attr_type, attr_value)
+    return self.mcmsg
+
+def format_tg_msg(
+  text: str,
+  entities: Optional[List[types.MessageEntity]],
+) -> McMessage:
+  return McDecorator().run(text, entities)
+
+def format_tg_media(
+  message: types.Message,
+  as_type: bool
+) -> Optional[str]:
+    if message.photo:
+      ty = '图片'
+      q = '一张'
+    elif message.sticker:
+      ty = '贴纸'
+      q = '一张'
+    elif message.document:
+      ty = '文件'
+      q = '一个'
+    elif not message.text:
+      if as_type:
+        return '不支持的类型'
+      else:
+        return '不支持类型的消息'
+    else:
+      return None
+
+    if as_type:
+      return ty
+    else:
+      return q + ty
+
 class McBot:
   msg_re = re.compile(r'^\[.*\]\ \[Server\ thread/INFO\]:\ (.*)$')
   chat_msg_re = re.compile(r'<([^>]+)> (.*)')
@@ -127,7 +272,7 @@ class McBot:
       if msg == 'online':
         print('\x15list')
       else:
-        print('\x15tellraw @a', json.dumps({'text': msg}, ensure_ascii=False))
+        print('\x15tellraw @a', msg)
 
   async def mc2tg(self) -> None:
     loop = asyncio.get_event_loop()
@@ -156,7 +301,6 @@ class McBot:
     if m := self.chat_msg_re.fullmatch(msg):
       if m.group(2) == 'ping':
         self.mc_q.put('pong')
-        return None
       reply = msg
     elif m := self.online_re.fullmatch(msg):
       n = int(m.group(1))
@@ -252,26 +396,65 @@ class TgBot:
     if not self._check_group(message):
       return
 
-    who = message.from_user.full_name
-    if text := message.text:
-      if m := message.reply_to_message:
-        repliee = m.from_user.full_name
-        if m.from_user.id == (await self.bot.me).id:
-          if u := re.match('<([^>]+)> ', m.text):
-            repliee = u.group(1)
-        reply = f'[t] {who} 回复 {repliee}: {text}'
-      else:
-        reply = f'[t] {who}: {text}'
-      if message.edit_date:
-        reply += ' (已编辑)'
-    elif message.photo:
-      reply = f'[t] {who} 发送了一张图片'
-    elif message.sticker:
-      reply = f'[t] {who} 发送了一张贴纸'
-    else:
-      reply = f'[t] {who} 发送了一些其它的东西'
+    mcmsg = McMessage()
 
-    self.mc_q.put_nowait(reply)
+    who = message.from_user.full_name
+    mcmsg.append(f'[{who}] ', color='aqua')
+
+    msg_media = format_tg_media(message, as_type=False)
+    if m := message.reply_to_message:
+      repliee = m.from_user.full_name
+      if m.from_user.id == (await self.bot.me).id:
+        if u := re.match('<([^>]+)> ', m.text):
+          repliee = u.group(1)
+
+      reply_to = McMessage()
+      reply_to_media = format_tg_media(m, as_type=True)
+      if not reply_to_media:
+        reply_to.extend(format_tg_msg(
+          m.text, m.entities))
+      elif m.caption:
+        reply_to.extend(format_tg_msg(
+          m.caption, m.caption_entities))
+        reply_to.append(
+          f' ({reply_to_media})', color='gray')
+      else:
+        reply_to.append(
+          f'({reply_to_media})', color='gray')
+
+      mcmsg.append(
+        '回复', color='blue', underlined=True,
+        hover_text=reply_to,
+      )
+      mcmsg.append(
+        f' {repliee}', color='cyan',
+        hover_text=reply_to,
+      )
+
+      if msg_media:
+        text = ' '
+      else:
+        text = ': '
+      mcmsg.append(text, color='white')
+
+    else:
+      if msg_media:
+        mcmsg.append('发送了', color='white')
+
+    if msg_media and message.caption:
+      mcmsg.append(f'{msg_media}并说: ', color='white')
+      mcmsg.extend(format_tg_msg(
+        message.caption, message.caption_entities))
+    elif msg_media:
+      mcmsg.append(f'{msg_media}', color='white')
+    else:
+      mcmsg.extend(format_tg_msg(
+        message.text, message.entities))
+
+    if message.edit_date:
+      mcmsg.append(' (已编辑)', color='gray')
+
+    self.mc_q.put_nowait(str(mcmsg))
 
   async def on_ping(self, message: types.Message) -> None:
     await message.reply('pong')
