@@ -175,7 +175,7 @@ class McDecorator:
     kwargs[attr_type] = attr_value
     if attr_type == 'link':
       kwargs['underlined'] = True
-      kwargs['color'] = 'blue'
+      kwargs['color'] = '#6b9ff6'
 
     self.mcmsg.append(text, **kwargs)
 
@@ -398,12 +398,15 @@ class TgBot:
 
     mcmsg = McMessage()
 
-    who = message.from_user.full_name
-    mcmsg.append(f'[{who}] ', color='aqua')
+    who = message.from_user.username
+    who_fullname = message.from_user.full_name
+    hover_fullname = McMessage()
+    hover_fullname.append(who_fullname)
+    mcmsg.append(f'<{who}> ', color='#3cb4b4', hover_text=hover_fullname,)
 
     msg_media = format_tg_media(message, as_type=False)
     if m := message.reply_to_message:
-      repliee = m.from_user.full_name
+      repliee = m.from_user.username
       if m.from_user.id == (await self.bot.me).id:
         if u := re.match('<([^>]+)> ', m.text):
           repliee = u.group(1)
@@ -423,8 +426,7 @@ class TgBot:
           f'({reply_to_media})', color='gray')
 
       mcmsg.append(
-        '回复', color='blue', underlined=True,
-        hover_text=reply_to,
+        '>', color='white'
       )
       mcmsg.append(
         f' {repliee}', color='cyan',
