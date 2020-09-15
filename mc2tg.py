@@ -171,7 +171,7 @@ class McDecorator:
   def _apply_attrs(
     self, text: str, attr_type: str, attr_value: Any,
   ) -> None:
-    kwargs = {'color': 'white'}
+    kwargs: Dict[str, Any] = {'color': 'white'}
     kwargs[attr_type] = attr_value
     if attr_type == 'link':
       kwargs['underlined'] = True
@@ -338,6 +338,7 @@ class McBot:
 
 class TgBot:
   group_id = None
+  MC_NAME_COLOR = '#3cb4b4'
 
   def __init__(
     self, token: str,
@@ -398,15 +399,19 @@ class TgBot:
 
     mcmsg = McMessage()
 
-    who = message.from_user.username
     who_fullname = message.from_user.full_name
+    who = message.from_user.username or who_fullname
     hover_fullname = McMessage()
     hover_fullname.append(who_fullname)
-    mcmsg.append(f'<{who}> ', color='#3cb4b4', hover_text=hover_fullname,)
+    mcmsg.append(
+      f'<{who}> ',
+      color=self.MC_NAME_COLOR,
+      hover_text=hover_fullname,
+    )
 
     msg_media = format_tg_media(message, as_type=False)
     if m := message.reply_to_message:
-      repliee = m.from_user.username
+      repliee = m.from_user.username or m.from_user.full_name
       if m.from_user.id == (await self.bot.me).id:
         if u := re.match('<([^>]+)> ', m.text):
           repliee = u.group(1)
@@ -426,10 +431,11 @@ class TgBot:
           f'({reply_to_media})', color='gray')
 
       mcmsg.append(
-        '>', color='white'
+        '回复', color='blue', underlined=True,
+        hover_text=reply_to,
       )
       mcmsg.append(
-        f' {repliee}', color='cyan',
+        f' {repliee}', color=self.MC_NAME_COLOR,
         hover_text=reply_to,
       )
 
