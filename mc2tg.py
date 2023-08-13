@@ -31,7 +31,9 @@ def load_messages(lang: str) -> Dict[str, str]:
     return json.load(f)
 
 def msgs2re(msgs: List[str], names: List[str]) -> re.Pattern:
-  retext = '|'.join(msg2re(msg, names) for msg in msgs)
+  # longer messages first so we match more precise messages first (e.g.
+  # "player was killed by X using magic" vs "player was killed by X").
+  retext = '|'.join(msg2re(msg, names) for msg in sorted(msgs, key=lambda x: -len(x)))
   return re.compile(retext)
 
 def msg2re(msg: str, names: List[str]) -> str:
